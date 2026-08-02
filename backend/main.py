@@ -174,6 +174,9 @@ async def upload_excel(file: UploadFile = File(...)):
         if not admission_col:
             raise HTTPException(status_code=400, detail="Could not identify 'Admission No' column in the Excel file.")
 
+        # Ensure tables exist (handles case where tables were dropped by clearing script)
+        init_db()
+
         db = DBConn()
         
         # Clear existing students and logs for a clean upload (Delete child table first)
