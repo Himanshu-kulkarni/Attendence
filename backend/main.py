@@ -8,6 +8,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load local environment variables from .env file
+load_dotenv()
 
 # Check for PostgreSQL database URL (Render default)
 DATABASE_URL = os.environ.get("DATABASE_URL")

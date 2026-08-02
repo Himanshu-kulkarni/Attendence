@@ -15,6 +15,7 @@ env/
 .DS_Store
 .idea/
 .vscode/
+.env
 
 # Project temporary files
 temp_uploaded.xlsx
