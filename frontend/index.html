@@ -13,7 +13,47 @@
 </head>
 <body>
     <div class="glass-bg"></div>
-    <div class="container">
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-wrapper">
+        <div class="card glass-card login-card">
+            <div class="brand login-brand">
+                <div class="logo">⚡</div>
+                <div>
+                    <h1>DPGU STR Induction 2026</h1>
+                    <p class="subtitle">Smart Attendance & QR Scanner Hub</p>
+                </div>
+            </div>
+            <div class="login-form">
+                <h2>Portal Login</h2>
+                <p class="login-desc">Select your role and enter the passcode to access the workspace.</p>
+                
+                <div class="form-group">
+                    <label for="loginRole">Select Role</label>
+                    <select id="loginRole" class="form-control">
+                        <option value="admin">Admin</option>
+                        <option value="volunteer_1">Volunteer 1</option>
+                        <option value="volunteer_2">Volunteer 2</option>
+                        <option value="volunteer_3">Volunteer 3</option>
+                        <option value="volunteer_4">Volunteer 4</option>
+                        <option value="volunteer_5">Volunteer 5</option>
+                        <option value="volunteer_6">Volunteer 6</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="loginPasscode">Passcode</label>
+                    <input type="password" id="loginPasscode" class="form-control" placeholder="••••••••" required>
+                </div>
+                
+                <button id="loginBtn" class="btn btn-primary btn-block">
+                    <span>🔓</span> Enter Workspace
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container hidden" id="dashboardContainer">
         
         <!-- Header -->
         <header>
@@ -25,8 +65,12 @@
                 </div>
             </div>
             <div class="actions">
+                <span id="userBadge" class="user-badge"></span>
                 <button id="exportBtn" class="btn btn-secondary">
                     <span>📥</span> Export Report
+                </button>
+                <button id="logoutBtn" class="btn btn-secondary logout-btn">
+                    <span>🚪</span> Logout
                 </button>
             </div>
         </header>
@@ -69,7 +113,7 @@
             <!-- Left Panel: Controls & Scanner -->
             <div class="panel-left">
                 <!-- Upload Sheet Card -->
-                <div class="card glass-card">
+                <div class="card glass-card" id="uploadCard">
                     <h2 class="card-title"><span>📂</span> Import Attendance Sheet</h2>
                     <p class="card-desc">Upload DPGU STR Excel file to initialize the student database.</p>
                     <div class="upload-area" id="dropzone">

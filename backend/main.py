@@ -3,7 +3,7 @@ import sqlite3
 import urllib.parse
 from datetime import datetime
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +12,18 @@ from dotenv import load_dotenv
 
 # Load local environment variables from .env file
 load_dotenv()
+
+# Simple authentication configuration
+VALID_CREDENTIALS = {
+    "admin": os.environ.get("ADMIN_PASSCODE", "admin2026"),
+    "volunteer_1": os.environ.get("VOL1_PASSCODE", "vol1"),
+    "volunteer_2": os.environ.get("VOL2_PASSCODE", "vol2"),
+    "volunteer_3": os.environ.get("VOL3_PASSCODE", "vol3"),
+    "volunteer_4": os.environ.get("VOL4_PASSCODE", "vol4"),
+    "volunteer_5": os.environ.get("VOL5_PASSCODE", "vol5"),
+    "volunteer_6": os.environ.get("VOL6_PASSCODE", "vol6"),
+}
+
 
 # Check for PostgreSQL database URL (Render default)
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -42,45 +54,44 @@ DB_PATH = "attendance.db"
 # Normalizes Render postgres:// URL to postgresql://
 def get_postgresql_connection():
     if not DATABASE_URL:
-        return None
-    url = DATABASE_URL
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
+        raise ValueError("DATABASE_URL environment variable is missing.")
     
-    # Connect to PostgreSQL
-    conn = psycopg2.connect(url)
+    # Parse the connection string explicitly for maximum compatibility
+    result = urllib.parse.urlparse(DATABASE_URL)
+    username = result.username
+    password = result.password
+    database = result.path[1:]
+    hostname = result.hostname
+    port = result.port or 5432
+    
+    # Extract query parameters for sslmode
+    query_params = urllib.parse.parse_qs(result.query)
+    sslmode = query_params.get('sslmode', ['require'])[0]
+    
+    conn = psycopg2.connect(
+        database=database,
+        user=username,
+        password=password,
+        host=hostname,
+        port=port,
+        sslmode=sslmode
+    )
     return conn
 
 # General connection interface
 class DBConn:
     def __init__(self):
-        self.is_postgres = bool(DATABASE_URL and psycopg2)
-        if self.is_postgres:
-            self.conn = get_postgresql_connection()
-            # Use RealDictCursor to match sqlite3.Row behavior
-            self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        else:
-            self.conn = sqlite3.connect(DB_PATH)
-            self.conn.row_factory = sqlite3.Row
-            self.cursor = self.conn.cursor()
+        self.conn = get_postgresql_connection()
+        # Use RealDictCursor to match dict key-value access behavior
+        self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     def execute(self, query: str, params: tuple = ()):
-        # Adapt parameter placeholders: PostgreSQL uses %s, SQLite uses ?
-        if self.is_postgres:
-            adapted_query = query
-        else:
-            adapted_query = query.replace("%s", "?")
-        
-        self.cursor.execute(adapted_query, params)
+        self.cursor.execute(query, params)
         return self.cursor
 
     def fetchall(self):
         rows = self.cursor.fetchall()
-        if self.is_postgres:
-            # Convert RealDictCursor rows to standard dicts
-            return [dict(r) for r in rows]
-        else:
-            return [dict(r) for r in rows]
+        return [dict(r) for r in rows]
 
     def fetchone(self):
         row = self.cursor.fetchone()
@@ -111,30 +122,37 @@ def init_db():
         )
     """)
     
-    # Attendance logs table (Postgres serial vs SQLite auto-increment)
-    if db.is_postgres:
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS attendance_logs (
-                id SERIAL PRIMARY KEY,
-                admission_no VARCHAR(255),
-                timestamp VARCHAR(255),
-                FOREIGN KEY(admission_no) REFERENCES students(admission_no)
-            )
-        """)
-    else:
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS attendance_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                admission_no TEXT,
-                timestamp TEXT,
-                FOREIGN KEY(admission_no) REFERENCES students(admission_no)
-            )
-        """)
+    # Attendance logs table
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS attendance_logs (
+            id SERIAL PRIMARY KEY,
+            admission_no VARCHAR(255),
+            timestamp VARCHAR(255),
+            FOREIGN KEY(admission_no) REFERENCES students(admission_no)
+        )
+    """)
         
     db.commit()
     db.close()
 
 init_db()
+
+class LoginRequest(BaseModel):
+    role: str
+    passcode: str
+
+@app.post("/api/login")
+async def login(req: LoginRequest):
+    role = req.role.strip().lower()
+    passcode = req.passcode.strip()
+    
+    if role not in VALID_CREDENTIALS:
+        raise HTTPException(status_code=400, detail="Invalid role selected.")
+    
+    if VALID_CREDENTIALS[role] == passcode:
+        return {"status": "success", "token": f"session_token_{role}", "role": role}
+    else:
+        raise HTTPException(status_code=401, detail="Incorrect passcode.")
 
 # Helper to map Excel columns robustly
 def find_column(columns, candidates):
@@ -145,7 +163,10 @@ def find_column(columns, candidates):
     return None
 
 @app.post("/api/upload")
-async def upload_excel(file: UploadFile = File(...)):
+async def upload_excel(file: UploadFile = File(...), authorization: str = Header(None)):
+    if not authorization or authorization != "session_token_admin":
+        raise HTTPException(status_code=403, detail="Unauthorized. Only Admin can upload data.")
+    
     if not file.filename.endswith(('.xlsx', '.xls')):
         raise HTTPException(status_code=400, detail="Invalid file format. Please upload an Excel sheet.")
     
@@ -196,20 +217,14 @@ async def upload_excel(file: UploadFile = File(...)):
             email_status = str(row[status_col]).strip() if status_col and pd.notna(row[status_col]) else ""
             qr_link = str(row[qr_col]).strip() if qr_col and pd.notna(row[qr_col]) else ""
             
-            # Use postgresql conflict syntax vs SQLite replace syntax
-            if db.is_postgres:
-                db.execute("""
-                    INSERT INTO students (admission_no, name, email, mob_no, department, email_status, qr_link)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (admission_no) DO UPDATE SET 
-                        name = EXCLUDED.name, email = EXCLUDED.email, mob_no = EXCLUDED.mob_no, 
-                        department = EXCLUDED.department, email_status = EXCLUDED.email_status, qr_link = EXCLUDED.qr_link
-                """, (admission_no, name, email, mob, dept, email_status, qr_link))
-            else:
-                db.execute("""
-                    INSERT OR REPLACE INTO students (admission_no, name, email, mob_no, department, email_status, qr_link)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (admission_no, name, email, mob, dept, email_status, qr_link))
+            # Use postgresql conflict syntax
+            db.execute("""
+                INSERT INTO students (admission_no, name, email, mob_no, department, email_status, qr_link)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (admission_no) DO UPDATE SET 
+                    name = EXCLUDED.name, email = EXCLUDED.email, mob_no = EXCLUDED.mob_no, 
+                    department = EXCLUDED.department, email_status = EXCLUDED.email_status, qr_link = EXCLUDED.qr_link
+            """, (admission_no, name, email, mob, dept, email_status, qr_link))
                 
             inserted_count += 1
             

@@ -3,6 +3,8 @@ let html5QrcodeScanner = null;
 let voiceEnabled = true;
 let studentsList = [];
 let scanDebounce = false;
+let userRole = localStorage.getItem("userRole") || null;
+let sessionToken = localStorage.getItem("sessionToken") || null;
 
 // Audio Feedback Context (Synthesized beep sound for feedback)
 function playBeep(type) {
@@ -66,14 +68,98 @@ function showToast(message, type = 'success') {
     }, 3500);
 }
 
+// Session Authentication Helper
+function checkAuth() {
+    userRole = localStorage.getItem("userRole");
+    sessionToken = localStorage.getItem("sessionToken");
+    
+    const loginScreen = document.getElementById("loginScreen");
+    const dashboardContainer = document.getElementById("dashboardContainer");
+    const uploadCard = document.getElementById("uploadCard");
+    const userBadge = document.getElementById("userBadge");
+    
+    if (!sessionToken || !userRole) {
+        loginScreen.classList.remove("hidden");
+        dashboardContainer.classList.add("hidden");
+        // Clear passcode input
+        document.getElementById("loginPasscode").value = "";
+        return false;
+    } else {
+        loginScreen.classList.add("hidden");
+        dashboardContainer.classList.remove("hidden");
+        
+        // Show role formatted
+        userBadge.textContent = userRole.replace("_", " ");
+        
+        // Hide upload card for volunteers
+        if (userRole === "admin") {
+            uploadCard.classList.remove("hidden");
+        } else {
+            uploadCard.classList.add("hidden");
+        }
+        return true;
+    }
+}
+
+// Authentication Handlers
+async function handleLogin() {
+    const roleSelect = document.getElementById("loginRole");
+    const passcodeInput = document.getElementById("loginPasscode");
+    const role = roleSelect.value;
+    const passcode = passcodeInput.value.trim();
+    
+    if (!passcode) {
+        showToast("Please enter a passcode", "error");
+        return;
+    }
+    
+    try {
+        const res = await fetch("/api/login", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ role, passcode })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            localStorage.setItem("userRole", data.role);
+            localStorage.setItem("sessionToken", data.token);
+            passcodeInput.value = "";
+            showToast("Login successful!", "success");
+            
+            if (checkAuth()) {
+                fetchStats();
+                fetchStudents();
+            }
+        } else {
+            showToast(data.detail || "Incorrect passcode", "error");
+        }
+    } catch (e) {
+        console.error(e);
+        showToast("Server connection failed", "error");
+    }
+}
+
+function handleLogout() {
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("sessionToken");
+    checkAuth();
+    showToast("Logged out successfully", "success");
+}
+
 // Initialize Application
 document.addEventListener("DOMContentLoaded", () => {
     // Populate voice voices list (async load)
     window.speechSynthesis.onvoiceschanged = () => {};
     
-    // Initial fetch
-    fetchStats();
-    fetchStudents();
+    if (checkAuth()) {
+        // Initial fetch
+        fetchStats();
+        fetchStudents();
+    }
     
     // Setup File Upload
     setupFileUpload();
@@ -84,6 +170,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Setup Action Listeners
 function setupActionListeners() {
+    // Login submit listeners
+    document.getElementById('loginBtn').addEventListener('click', handleLogin);
+    document.getElementById('loginPasscode').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleLogin();
+    });
+    
+    // Logout listener
+    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+
     // Start Scan Button
     document.getElementById('startScanBtn').addEventListener('click', startScanner);
     
@@ -229,6 +324,9 @@ function setupFileUpload() {
         try {
             const res = await fetch('/api/upload', {
                 method: 'POST',
+                headers: {
+                    'Authorization': sessionToken
+                },
                 body: formData
             });
             
