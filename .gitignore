@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+
+# Databases
+*.db
+*.sqlite3
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Project temporary files
+temp_uploaded.xlsx
+Attendance_Report.xlsx

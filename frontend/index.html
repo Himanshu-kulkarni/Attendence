@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DPGU STR Induction - QR Attendance System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- QR Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="container">
+        
+        <!-- Header -->
+        <header>
+            <div class="brand">
+                <div class="logo">⚡</div>
+                <div>
+                    <h1>DPGU STR Induction 2026</h1>
+                    <p class="subtitle">Smart Attendance & QR Scanner Hub</p>
+                </div>
+            </div>
+            <div class="actions">
+                <button id="exportBtn" class="btn btn-secondary">
+                    <span>📥</span> Export Report
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Overview -->
+        <section class="stats-container">
+            <div class="stat-card">
+                <div class="stat-icon pink">👥</div>
+                <div class="stat-info">
+                    <span class="stat-label">Total Students</span>
+                    <h3 id="statTotal">0</h3>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">✔️</div>
+                <div class="stat-info">
+                    <span class="stat-label">Present Today</span>
+                    <h3 id="statPresent">0</h3>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon red">❌</div>
+                <div class="stat-info">
+                    <span class="stat-label">Absent Today</span>
+                    <h3 id="statAbsent">0</h3>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon blue">📈</div>
+                <div class="stat-info">
+                    <span class="stat-label">Attendance Rate</span>
+                    <h3 id="statRate">0%</h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            
+            <!-- Left Panel: Controls & Scanner -->
+            <div class="panel-left">
+                <!-- Upload Sheet Card -->
+                <div class="card glass-card">
+                    <h2 class="card-title"><span>📂</span> Import Attendance Sheet</h2>
+                    <p class="card-desc">Upload DPGU STR Excel file to initialize the student database.</p>
+                    <div class="upload-area" id="dropzone">
+                        <input type="file" id="fileInput" accept=".xlsx, .xls" style="display: none;">
+                        <div class="upload-prompt" id="uploadPrompt">
+                            <span class="upload-icon">📤</span>
+                            <p>Drag & drop or <strong class="link-text">browse</strong> Excel file</p>
+                            <span class="file-type-hint">.xlsx, .xls only</span>
+                        </div>
+                        <div class="upload-progress" id="uploadProgress" style="display: none;">
+                            <div class="spinner"></div>
+                            <p>Processing sheet...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Camera QR Code Scanner Card -->
+                <div class="card glass-card scanner-card">
+                    <div class="card-header-flex">
+                        <h2 class="card-title"><span>📷</span> Live QR Scanner</h2>
+                        <div class="voice-controls">
+                            <button id="voiceToggle" class="btn-voice-toggle" title="Toggle Text-To-Speech Output">
+                                <span class="voice-icon">🔊</span> Voice Enabled
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="scanner-container">
+                        <div id="reader" style="width: 100%;"></div>
+                        <div class="scanner-overlay" id="scannerOverlay">
+                            <p>Camera not active</p>
+                            <button id="startScanBtn" class="btn btn-primary">Start Camera</button>
+                        </div>
+                    </div>
+                    
+                    <div class="manual-input-area">
+                        <input type="text" id="manualAdmInput" placeholder="Enter Admission No manually...">
+                        <button id="manualSubmitBtn" class="btn btn-secondary">Submit</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: HUD & Student List -->
+            <div class="panel-right">
+                <!-- Live Scan HUD Feedback -->
+                <div class="card glass-card hud-card" id="hudCard">
+                    <div class="hud-status" id="hudStatus">
+                        <div class="hud-indicator idle"></div>
+                        <span id="hudStatusText">Ready to Scan</span>
+                    </div>
+                    <div class="hud-content" id="hudContent">
+                        <div class="hud-placeholder">
+                            <span class="hud-big-icon">🎯</span>
+                            <p>Scan a student QR card to mark attendance</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Student Directory Table -->
+                <div class="card glass-card list-card">
+                    <div class="list-header">
+                        <h2 class="card-title"><span>📋</span> Student Roster</h2>
+                        <input type="text" id="searchBar" class="search-input" placeholder="Search by name, dept, admission...">
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Student Name</th>
+                                    <th>Admission No</th>
+                                    <th>Department</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Time Logged</th>
+                                </tr>
+                            </thead>
+                            <tbody id="studentTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center empty-state">No students loaded. Import an Excel sheet to begin.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
