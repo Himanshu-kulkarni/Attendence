@@ -249,7 +249,7 @@ function filterAndRenderTable(query = '') {
     });
     
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center empty-state">No matching students found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center empty-state">No matching students found.</td></tr>`;
         return;
     }
     
@@ -261,11 +261,17 @@ function filterAndRenderTable(query = '') {
             ? '<span class="badge badge-present">Present</span>' 
             : '<span class="badge badge-absent">Absent</span>';
             
+        const kitBadge = student.kit_received
+            ? '<span class="badge badge-kit-yes">Yes</span>'
+            : '<span class="badge badge-kit-no">No</span>';
+            
         row.innerHTML = `
             <td><strong>${student.name}</strong></td>
             <td><code>${student.admission_no}</code></td>
             <td>${student.department || '-'}</td>
             <td>${student.email || '-'}</td>
+            <td><code>${student.food_coupons !== undefined ? student.food_coupons : 0}</code></td>
+            <td>${kitBadge}</td>
             <td>${statusBadge}</td>
             <td>${attended ? formatTimestamp(attended) : '-'}</td>
         `;
@@ -276,7 +282,16 @@ function filterAndRenderTable(query = '') {
 function formatTimestamp(tsStr) {
     try {
         const date = new Date(tsStr);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        if (isNaN(date.getTime())) {
+            // Fallback for old naive string timestamps
+            const normalized = tsStr.replace(" ", "T");
+            const dateNorm = new Date(normalized);
+            if (!isNaN(dateNorm.getTime())) {
+                return dateNorm.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+            }
+            return tsStr;
+        }
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     } catch (e) {
         return tsStr;
     }
@@ -485,8 +500,10 @@ async function markAttendanceAPI(admissionNo) {
                             <span>${formatTimestamp(data.time)}</span>
                         </div>
                     </div>
+                    ${getHudExtrasHTML(student)}
                 </div>
             `;
+            bindExtrasButton(student.admission_no);
             showToast(`${student.name} already checked in.`, 'error');
             
         } else if (data.status === 'success') {
@@ -513,8 +530,10 @@ async function markAttendanceAPI(admissionNo) {
                             <span>${formatTimestamp(data.time)}</span>
                         </div>
                     </div>
+                    ${getHudExtrasHTML(student)}
                 </div>
             `;
+            bindExtrasButton(student.admission_no);
             showToast(`Attendance logged: ${student.name}`, 'success');
             
             // Reload stats and student lists
@@ -535,5 +554,64 @@ async function markAttendanceAPI(admissionNo) {
                 <p style="color:var(--text-secondary)">${e.message || "Failed to reach backend api."}</p>
             </div>
         `;
+    }
+}
+
+// Student Extras HTML Builder
+function getHudExtrasHTML(student) {
+    const couponsVal = student.food_coupons !== undefined ? student.food_coupons : 0;
+    const kitChecked = student.kit_received ? 'checked' : '';
+    return `
+        <div class="hud-extras">
+            <div class="extras-row">
+                <div class="extra-item">
+                    <label for="hudFoodCoupons">Food Coupons</label>
+                    <input type="number" id="hudFoodCoupons" min="0" value="${couponsVal}" class="extra-input-num">
+                </div>
+                <div class="extra-item inline-flex">
+                    <input type="checkbox" id="hudKitReceived" ${kitChecked} class="extra-input-checkbox">
+                    <label for="hudKitReceived" style="cursor:pointer">Kit Received</label>
+                </div>
+            </div>
+            <button id="saveExtrasBtn" class="btn btn-primary btn-sm">
+                <span>💾</span> Save Details
+            </button>
+        </div>
+    `;
+}
+
+// Bind HUD Save Button Handler
+function bindExtrasButton(admissionNo) {
+    const saveBtn = document.getElementById("saveExtrasBtn");
+    if (saveBtn) {
+        saveBtn.onclick = async () => {
+            const foodCoupons = parseInt(document.getElementById("hudFoodCoupons").value) || 0;
+            const kitReceived = document.getElementById("hudKitReceived").checked;
+            
+            saveBtn.disabled = true;
+            saveBtn.textContent = "Saving...";
+            
+            try {
+                const res = await fetch("/api/students/update", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ admission_no: admissionNo, food_coupons: foodCoupons, kit_received: kitReceived })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast("Student details updated successfully", "success");
+                    speakText("Details saved");
+                    fetchStudents(); // Refresh the table
+                } else {
+                    showToast(data.detail || "Failed to update details", "error");
+                }
+            } catch (e) {
+                console.error(e);
+                showToast("Network error updating details", "error");
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = "<span>💾</span> Save Details";
+            }
+        };
     }
 }

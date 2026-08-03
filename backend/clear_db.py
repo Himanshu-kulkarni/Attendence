@@ -47,7 +47,9 @@ def clear_database():
                     mob_no VARCHAR(255),
                     department VARCHAR(255),
                     email_status VARCHAR(255),
-                    qr_link TEXT
+                    qr_link TEXT,
+                    food_coupons INTEGER DEFAULT 0,
+                    kit_received BOOLEAN DEFAULT FALSE
                 )
             """)
             cursor.execute("""

@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import pandas as pd
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
 from fastapi.responses import FileResponse, JSONResponse
@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 
 # Load local environment variables from .env file
 load_dotenv()
+
+# India Standard Time (IST) Timezone Configuration
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # Simple authentication configuration
 VALID_CREDENTIALS = {
@@ -118,9 +121,19 @@ def init_db():
             mob_no VARCHAR(255),
             department VARCHAR(255),
             email_status VARCHAR(255),
-            qr_link TEXT
+            qr_link TEXT,
+            food_coupons INTEGER DEFAULT 0,
+            kit_received BOOLEAN DEFAULT FALSE
         )
     """)
+    
+    # Run migrations for existing setups
+    try:
+        db.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS food_coupons INTEGER DEFAULT 0;")
+        db.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS kit_received BOOLEAN DEFAULT FALSE;")
+        db.commit()
+    except Exception as e:
+        print(f"Migration note: {e}")
     
     # Attendance logs table
     db.execute("""
@@ -153,6 +166,33 @@ async def login(req: LoginRequest):
         return {"status": "success", "token": f"session_token_{role}", "role": role}
     else:
         raise HTTPException(status_code=401, detail="Incorrect passcode.")
+
+class UpdateStudentRequest(BaseModel):
+    admission_no: str
+    food_coupons: int
+    kit_received: bool
+
+@app.post("/api/students/update")
+async def update_student(req: UpdateStudentRequest):
+    admission_no = req.admission_no.strip()
+    db = DBConn()
+    
+    # Check if student exists
+    db.execute("SELECT * FROM students WHERE admission_no = %s", (admission_no,))
+    student = db.fetchone()
+    if not student:
+        db.close()
+        raise HTTPException(status_code=404, detail="Student not found.")
+        
+    db.execute("""
+        UPDATE students 
+        SET food_coupons = %s, kit_received = %s
+        WHERE admission_no = %s
+    """, (req.food_coupons, req.kit_received, admission_no))
+    
+    db.commit()
+    db.close()
+    return {"status": "success", "message": "Student details updated successfully."}
 
 # Helper to map Excel columns robustly
 def find_column(columns, candidates):
@@ -268,7 +308,7 @@ async def mark_attendance(req: MarkAttendanceRequest):
         student = matched_student
 
     # Check if already marked present today
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = datetime.now(IST).strftime("%Y-%m-%d")
     db.execute("""
         SELECT * FROM attendance_logs 
         WHERE admission_no = %s AND timestamp LIKE %s
@@ -285,7 +325,7 @@ async def mark_attendance(req: MarkAttendanceRequest):
         }
         
     # Mark present
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now(IST).isoformat()
     db.execute("""
         INSERT INTO attendance_logs (admission_no, timestamp)
         VALUES (%s, %s)
@@ -327,7 +367,7 @@ async def get_stats():
     total_row = db.fetchone()
     total_students = total_row["count"] if total_row else 0
     
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = datetime.now(IST).strftime("%Y-%m-%d")
     db.execute("SELECT COUNT(DISTINCT admission_no) as count FROM attendance_logs WHERE timestamp LIKE %s", (f"{today_str}%",))
     present_row = db.fetchone()
     present_today = present_row["count"] if present_row else 0
@@ -352,6 +392,8 @@ async def export_attendance():
                s.email as "Email Id", 
                s.mob_no as "Mob No", 
                s.department as "Department",
+               s.food_coupons as "Food Coupons",
+               CASE WHEN s.kit_received THEN 'Yes' ELSE 'No' END as "Kit Received",
                CASE WHEN l.timestamp IS NOT NULL THEN 'PRESENT' ELSE 'ABSENT' END as "Attendance Status",
                l.timestamp as "Attended At"
         FROM students s

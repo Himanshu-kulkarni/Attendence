@@ -294,6 +294,30 @@ sequenceDiagram
 - **Response (200 OK)**: Binary file download (`Attendance_Report.xlsx`).
 </details>
 
+<details>
+<summary><strong>7. Update Student Details (POST /api/students/update)</strong></summary>
+
+- **Description**: Updates the number of food coupons taken and the kit receipt status for a specific student.
+- **Authentication Required**: No.
+- **Request Body**:
+  ```json
+  {
+    "admission_no": "DPGU-2026-0042",
+    "food_coupons": 2,
+    "kit_received": true
+  }
+  ```
+- **Response (200 OK)**:
+  ```json
+  {
+    "status": "success",
+    "message": "Student details updated successfully."
+  }
+  ```
+- **Errors**:
+  - `404 Not Found`: "Student not found."
+</details>
+
 ---
 
 ## Database Schema
@@ -308,6 +332,8 @@ erDiagram
         VARCHAR_255 department
         VARCHAR_255 email_status
         TEXT qr_link
+        INTEGER food_coupons
+        BOOLEAN kit_received
     }
     attendance_logs {
         SERIAL id PK
@@ -322,10 +348,12 @@ erDiagram
    - `admission_no` (VARCHAR(255), Primary Key): Unique registration/admission identifier.
    - `name`, `email`, `mob_no`, `department`, `email_status` (VARCHAR(255)): Student metadata.
    - `qr_link` (TEXT): URL referencing pre-generated student QR code cards.
+   - `food_coupons` (INTEGER): Number of food coupons collected by the student (defaults to 0).
+   - `kit_received` (BOOLEAN): Flag indicating if the student has collected their induction kit (defaults to false).
 2. **`attendance_logs`**:
    - `id` (SERIAL, Primary Key): Unique auto-increment index.
    - `admission_no` (VARCHAR(255), Foreign Key): References `students(admission_no)`.
-   - `timestamp` (VARCHAR(255)): String representation of scan event time (`YYYY-MM-DD HH:MM:SS`).
+   - `timestamp` (VARCHAR(255)): ISO 8601 string representation of scan event time with timezone offset (`YYYY-MM-DDTHH:MM:SS+HH:MM`).
 
 ---
 
