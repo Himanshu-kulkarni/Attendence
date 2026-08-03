@@ -502,13 +502,14 @@ header h1 {
 
 table {
     width: 100%;
+    min-width: 900px;
     border-collapse: collapse;
     text-align: left;
     font-size: 0.9rem;
 }
 
 th, td {
-    padding: 0.9rem 1.2rem;
+    padding: 0.8rem 1rem;
     border-bottom: 1px solid var(--card-border);
 }
 
